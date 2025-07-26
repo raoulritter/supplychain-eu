@@ -7,7 +7,7 @@ import {
   fetchSupplyRoutes 
 } from '../services/euEnergyService.js'
 
-function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timeline = 0, bottleneckMode = false }) {
+function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timeline = 0, bottleneckMode = false, isRotating = true }) {
   const mountRef = useRef()
   const globeRef = useRef()
   const [locations, setLocations] = useState([])
@@ -198,11 +198,11 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
       { name: 'Northvolt Sweden', lat: 65.5845, lng: 22.1567, size: 1.3, color: '#22c55e', type: 'battery_plant' },
       { name: 'Rotterdam Port', lat: 51.9244, lng: 4.4777, size: 1.2, color: '#60a5fa', type: 'port' },
       { name: 'Hamburg Port', lat: 53.5511, lng: 9.9937, size: 1.0, color: '#60a5fa', type: 'port' },
-      { name: 'Chile Lithium', lat: -24.5, lng: -69.25, size: 1.1, color: '#f59e0b', type: 'source' },
-      { name: 'Australia Lithium', lat: -25.0, lng: 133.0, size: 1.3, color: '#f59e0b', type: 'source' },
-      { name: 'DRC Cobalt', lat: -11.6094, lng: 27.4731, size: 1.4, color: '#fb923c', type: 'source' },
-      { name: 'China Rare Earths', lat: 41.77, lng: 109.97, size: 1.5, color: '#ef4444', type: 'source' },
-      { name: 'Finland Lithium', lat: 63.8403, lng: 23.1306, size: 0.8, color: '#10b981', type: 'source' }
+      { name: 'Chile Lithium', lat: -24.5, lng: -69.25, size: 1.1, color: '#f59e0b', type: 'source', country: 'Chile' },
+      { name: 'Australia Lithium', lat: -25.0, lng: 133.0, size: 1.3, color: '#f59e0b', type: 'source', country: 'Australia' },
+      { name: 'DRC Cobalt', lat: -11.6094, lng: 27.4731, size: 1.4, color: '#fb923c', type: 'source', country: 'DRC' },
+      { name: 'China Rare Earths', lat: 41.77, lng: 109.97, size: 1.5, color: '#ef4444', type: 'source', country: 'China' },
+      { name: 'Finland Lithium', lat: 63.8403, lng: 23.1306, size: 0.8, color: '#10b981', type: 'source', country: 'Finland' }
     ]
     setLocations(sampleLocations)
     
@@ -230,7 +230,6 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
         risk_level: 'very_high' 
       }
     ]
-    console.log('Setting sample routes:', sampleRoutes) // Debug log
     setRoutes(sampleRoutes)
   }
 
@@ -251,35 +250,120 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
       .height(window.innerHeight)
 
     // Filter locations based on bottleneck mode
+    // Filter locations based on bottleneck mode
     const displayLocations = bottleneckMode ? 
       locations.filter(location => location.isBottleneck) : 
       locations
 
-    // Add points to globe as flat circles/blobs - FIXED overlap issue
-    globe
-      .pointsData(displayLocations)
-      .pointAltitude(0.01) // Keep all points at same level to prevent z-fighting
-      .pointColor('color')
-      .pointRadius('size') // Use consistent sizing - no multipliers that cause overlap
-      .pointResolution(8) // Reduced resolution for better performance and less visual noise
-      .pointLabel(d => {
-        const isBottleneckLocation = isBottleneck(d)
-        const bottleneckWarning = isBottleneckLocation ? '<br/>⚠️ <strong style="color: #ef4444;">CRITICAL BOTTLENECK</strong>' : ''
-        
-        return `
-          <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: white; font-size: 12px; border: ${isBottleneckLocation ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.2)'};">
-            <strong>${d.name}</strong>${bottleneckWarning}<br/>
-            Type: ${d.type}<br/>
-            ${d.country ? `Country: ${d.country}<br/>` : ''}
-            ${d.capacity ? `Capacity: ${d.capacity.toLocaleString()}<br/>` : ''}
-            ${d.importance ? `Strategic Importance: ${d.importance}/5<br/>` : ''}
-            ${isBottleneckLocation ? `<span style="color: #f59e0b;">Risk Level: HIGH</span>` : ''}
-          </div>
-        `
-      })
+    // Helper function to get emoji for location
+    const getLocationEmoji = (location) => {
+      const type = location.type || location.facility_type
+      switch (type) {
+        case 'port': return '🚢'
+        case 'battery_plant':
+        case 'battery_gigafactory': return '🔋'
+        case 'solar_panel_plant': return '☀️'
+        case 'wind_turbine_factory': return '💨'
+        case 'mine':
+          if (location.name.includes('Lithium')) return '🧂'
+          if (location.name.includes('Copper')) return '🔶'
+          if (location.name.includes('Rare')) return '🏔️'
+          return '⛏️'
+        default: return '📍'
+      }
+    }
 
+    // Use HTML elements for emoji display
+    globe
+      .htmlElementsData(displayLocations)
+      .htmlElement(d => {
+        const emoji = getLocationEmoji(d)
+        const isBottleneckLocation = isBottleneck(d)
+        
+        const el = document.createElement('div')
+        el.innerHTML = emoji
+        el.style.fontSize = '24px'
+        el.style.textShadow = '0 0 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.6)'
+        el.style.cursor = 'pointer'
+        el.style.userSelect = 'none'
+        el.style.pointerEvents = 'auto'
+        el.style.position = 'absolute'
+        el.style.transform = 'translate(-50%, -50%)'
+        el.style.zIndex = '1000'
+        
+        // Add glow effect for bottlenecks
+        if (isBottleneckLocation) {
+          el.style.filter = 'drop-shadow(0 0 8px #ef4444)'
+        }
+        
+        // Add tooltip on hover
+        const tooltipContent = `
+          ${d.name}
+          ${isBottleneckLocation ? '\n⚠️ CRITICAL BOTTLENECK' : ''}
+          Type: ${d.type}
+          ${d.country ? `Country: ${d.country}` : ''}
+          ${d.capacity ? `Capacity: ${d.capacity.toLocaleString()}` : ''}
+          ${d.importance ? `Importance: ${d.importance}/5` : ''}
+        `
+        el.title = tooltipContent.trim()
+        
+        return el
+      })
+      .htmlTransitionDuration(0)
+
+    // Create internal EU supply routes between manufacturers and ports
+    const createInternalEURoutes = () => {
+      const euManufacturers = displayLocations.filter(loc => {
+        const type = loc.type || loc.facility_type
+        return (type === 'battery_plant' || type === 'battery_gigafactory' || 
+                type === 'solar_panel_plant' || type === 'wind_turbine_factory') &&
+               (loc.region === 'EU' || loc.is_eu_facility || loc.country?.includes('Germany') || 
+                loc.country?.includes('France') || loc.country?.includes('Spain') || 
+                loc.country?.includes('Sweden') || loc.country?.includes('Norway'))
+      })
+      
+      const euPorts = displayLocations.filter(loc => 
+        (loc.type === 'port') && (loc.region === 'EU' || loc.is_eu_facility)
+      )
+      
+      const internalRoutes = []
+      
+      // Connect each manufacturer to the nearest 2-3 ports
+      euManufacturers.forEach(manufacturer => {
+        // Sort ports by distance and connect to the nearest ones
+        const sortedPorts = euPorts
+          .map(port => ({
+            ...port,
+            distance: Math.sqrt(
+              Math.pow(manufacturer.lat - port.lat, 2) + 
+              Math.pow(manufacturer.lng - port.lng, 2)
+            )
+          }))
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 2) // Connect to 2 nearest ports
+        
+        sortedPorts.forEach(port => {
+          internalRoutes.push({
+            startLat: manufacturer.lat,
+            startLng: manufacturer.lng,
+            endLat: port.lat,
+            endLng: port.lng,
+            color: '#22c55e', // Bright green for internal EU routes
+            name: `🏭 ${manufacturer.name} → 🚢 ${port.name} (Internal EU Supply)`,
+            volume: manufacturer.capacity || 10000,
+            riskLevel: 'low',
+            thickness: 1.5, // Thicker for better visibility
+            animationSpeed: 3000, // Slower animation
+            isInternal: true
+          })
+        })
+      })
+      
+      return internalRoutes
+    }
+    
     // Create arcs from supply routes data with enhanced bottleneck visualization
-    const arcs = routes.map(route => ({
+    const externalArcs = routes.map(route => ({
       startLat: route.origin?.lat || 0,
       startLng: route.origin?.lng || 0,
       endLat: route.destination?.lat || 0,
@@ -293,6 +377,10 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
       // Pass the full route object for thickness calculation
       routeData: route
     }))
+    
+    // Combine external and internal routes
+    const internalRoutes = createInternalEURoutes()
+    const arcs = [...externalArcs, ...internalRoutes]
 
     globe
       .arcsData(arcs)
@@ -301,16 +389,33 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
       .arcDashGap(0.2)
       .arcDashAnimateTime(d => d.animationSpeed) // Use enhanced animation speed
       .arcStroke(d => d.thickness) // Use enhanced thickness calculation
-      .arcLabel(d => `
-        <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: white; font-size: 12px;">
-          <strong>${d.name}</strong><br/>
-          Volume: ${d.volume?.toLocaleString() || 'N/A'} tons/year<br/>
-          Risk Level: ${d.riskLevel || 'Unknown'}
-        </div>
-      `)
+      .arcLabel(d => {
+        const riskEmoji = d.riskLevel === 'very_high' ? '🚨' : 
+                         d.riskLevel === 'high' ? '⚠️' : 
+                         d.riskLevel === 'blocked' ? '🚫' :
+                         d.isInternal ? '✅' : '📦'
+        
+        const riskColor = d.riskLevel === 'very_high' ? '#ef4444' : 
+                         d.riskLevel === 'high' ? '#f59e0b' : 
+                         d.riskLevel === 'blocked' ? '#7f1d1d' :
+                         d.isInternal ? '#22c55e' : '#60a5fa'
+        
+        return `
+          <div style="background: rgba(0,0,0,0.9); padding: 10px; border-radius: 6px; color: white; font-size: 13px; border: 2px solid ${riskColor}; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+            <div style="font-size: 20px; text-align: center; margin-bottom: 4px;">${riskEmoji}</div>
+            <strong style="font-size: 14px;">${d.name}</strong><br/>
+            <div style="margin-top: 4px;">
+              Volume: ${d.volume?.toLocaleString() || 'N/A'} tons/year<br/>
+              <span style="color: ${riskColor}; font-weight: bold;">
+                Risk: ${d.riskLevel === 'blocked' ? 'BLOCKED' : d.riskLevel?.toUpperCase() || 'UNKNOWN'}
+              </span>
+            </div>
+          </div>
+        `
+      })
 
     // Auto-rotate
-    globe.controls().autoRotate = true
+    globe.controls().autoRotate = isRotating
     globe.controls().autoRotateSpeed = 0.5
 
     globeRef.current = globe
@@ -332,6 +437,13 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timelin
       }
     }
   }, [locations, routes, loading])
+
+  // Handle rotation changes
+  useEffect(() => {
+    if (globeRef.current && globeRef.current.controls) {
+      globeRef.current.controls().autoRotate = isRotating
+    }
+  }, [isRotating])
 
   // Handle disruptions with dynamic data
   useEffect(() => {

@@ -10,6 +10,7 @@ function App() {
   const [shipments, setShipments] = useState([])
   const [timeline, setTimeline] = useState(0)
   const [bottleneckMode, setBottleneckMode] = useState(false)
+  const [isRotating, setIsRotating] = useState(true)
 
   return (
     <div className="app">
@@ -19,6 +20,7 @@ function App() {
         shipments={shipments}
         timeline={timeline}
         bottleneckMode={bottleneckMode}
+        isRotating={isRotating}
       />
       
       <ControlPanel 
@@ -38,6 +40,15 @@ function App() {
         bottleneckMode={bottleneckMode}
         timeline={timeline}
       />
+      
+      {/* Rotation Control Button */}
+      <button 
+        className="rotation-control"
+        onClick={() => setIsRotating(!isRotating)}
+        title={isRotating ? 'Stop Globe Rotation' : 'Start Globe Rotation'}
+      >
+        {isRotating ? '⏸️' : '▶️'}
+      </button>
     </div>
   )
 }

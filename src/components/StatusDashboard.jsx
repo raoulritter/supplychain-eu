@@ -1,6 +1,11 @@
 import './StatusDashboard.css'
+import { useState } from 'react'
+import { explainDisruption } from '../services/mistralService'
 
-function StatusDashboard({ shipments, activeDisruption, bottleneckMode = false, timeline = 0 }) {
+function StatusDashboard({ activeDisruption, bottleneckMode = false, timeline = 0 }) {
+  const [explanation, setExplanation] = useState('')
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState(false)
+  const [showExplanation, setShowExplanation] = useState(false)
   // REAL DATA: Calculate actual material supply based on database values
   const materials = [
     { 
@@ -108,6 +113,33 @@ function StatusDashboard({ shipments, activeDisruption, bottleneckMode = false, 
 
   const impact = getDisruptionImpact()
 
+  const handleExplainDisruption = async () => {
+    if (!impact) return
+    
+    setIsLoadingExplanation(true)
+    try {
+      const disruptionData = {
+        type: activeDisruption,
+        affectedVolume: impact.affectedVolume,
+        economicImpact: impact.economicImpact,
+        capacityReduction: impact.capacityReduction,
+        timeToResolve: impact.timeToResolve,
+        alternativeRoute: impact.alternativeRoute,
+        affectedFacilities: impact.affectedFacilities
+      }
+      
+      const result = await explainDisruption(disruptionData)
+      setExplanation(result)
+      setShowExplanation(true)
+    } catch (error) {
+      console.error('Failed to get explanation:', error)
+      setExplanation('Unable to generate explanation at this time. Please try again.')
+      setShowExplanation(true)
+    } finally {
+      setIsLoadingExplanation(false)
+    }
+  }
+
   // Adjust supply based on timeline projection
   const getProjectedSupply = (baseDays) => {
     return Math.max(baseDays - (timeline * 2), 0) // Supply decreases by ~2 days per month
@@ -179,7 +211,6 @@ function StatusDashboard({ shipments, activeDisruption, bottleneckMode = false, 
         <div className="port-status">
           {ports.map(port => {
             const utilizationPercent = Math.round((port.currentThroughput / port.capacity) * 100)
-            const criticalMaterialsPercent = Math.round((port.criticalMaterials / port.currentThroughput) * 100)
             
             return (
               <div key={port.name} className="port-item-detailed">
@@ -216,7 +247,16 @@ function StatusDashboard({ shipments, activeDisruption, bottleneckMode = false, 
 
       {impact && (
         <div className="status-section disruption-impact">
-          <h3>🚨 Disruption Impact Analysis</h3>
+          <div className="disruption-header">
+            <h3>🚨 Disruption Impact Analysis</h3>
+            <button 
+              className="explain-button"
+              onClick={handleExplainDisruption}
+              disabled={isLoadingExplanation}
+            >
+              {isLoadingExplanation ? 'Generating...' : '💡 Explain Impact'}
+            </button>
+          </div>
           <div className="impact-metrics">
             <div className="impact-item">
               <span className="impact-label">Material Volume Affected</span>
@@ -255,6 +295,25 @@ function StatusDashboard({ shipments, activeDisruption, bottleneckMode = false, 
               <span className="route-text">{impact.alternativeRoute}</span>
             </div>
           </div>
+          
+          {showExplanation && (
+            <div className="ai-explanation">
+              <div className="explanation-header">
+                <h4>🤖 AI Explanation for Decision Makers</h4>
+                <button 
+                  className="close-explanation"
+                  onClick={() => setShowExplanation(false)}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="explanation-content">
+                {explanation.split('\n').map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
