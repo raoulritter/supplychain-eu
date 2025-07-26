@@ -1,0 +1,17 @@
+name: eu-supply-chain-visualizer
+services:
+  - name: web
+    type: web
+    build:
+      builder: buildpack
+    run_command: npm start
+    ports:
+      - port: 8000
+        protocol: http
+    env:
+      - key: NODE_ENV
+        value: production
+    instance_type: nano
+    autoscaling:
+      min: 1
+      max: 1
