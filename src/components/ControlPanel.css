@@ -71,12 +71,30 @@
   gap: 10px;
   width: 100%;
   text-align: left;
-  padding: 10px 12px;
+  padding: 12px;
   transition: all 0.2s;
 }
 
 .disruption-icon {
   font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.disruption-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.disruption-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.disruption-description {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  font-weight: 400;
 }
 
 .disruption-btn.active.danger {
