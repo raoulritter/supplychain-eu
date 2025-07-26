@@ -1,84 +1,81 @@
-import { useRef, useMemo } from 'react'
-import { useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
-import { Sphere } from '@react-three/drei'
+import { useFrame, useThree } from '@react-three/fiber'
+import { useEffect, useRef, useState } from 'react'
+import ThreeGlobe from 'three-globe'
 
 function Globe({ selectedMaterial, activeDisruption, shipments }) {
   const globeRef = useRef()
-  
-  // Create Earth texture procedurally
-  const earthTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    canvas.width = 2048
-    canvas.height = 1024
-    
-    // Ocean background
-    ctx.fillStyle = '#0a1929'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Add ocean gradient
-    const oceanGradient = ctx.createLinearGradient(0, 0, 0, canvas.height)
-    oceanGradient.addColorStop(0, 'rgba(30, 58, 95, 0.8)')
-    oceanGradient.addColorStop(0.5, 'rgba(12, 31, 61, 0.9)')
-    oceanGradient.addColorStop(1, 'rgba(30, 58, 95, 0.8)')
-    ctx.fillStyle = oceanGradient
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    
-    // Function to draw landmass
-    const drawLandmass = (x, y, width, height, color = '#2d4a2d') => {
-      ctx.fillStyle = color
-      ctx.beginPath()
-      ctx.roundRect(x, y, width, height, 10)
-      ctx.fill()
-      
-      // Add some texture
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
-      ctx.beginPath()
-      ctx.roundRect(x + 5, y + 5, width - 10, height - 10, 8)
-      ctx.fill()
+  const [globeData, setGlobeData] = useState(null)
+  const { scene } = useThree()
+
+  useEffect(() => {
+    // Create the globe
+    const globe = new ThreeGlobe()
+      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+      .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      .showAtmosphere(true)
+      .atmosphereColor('#3a82f6')
+      .atmosphereAltitude(0.1)
+
+    // Set initial position and scale
+    globe.scale.set(0.01, 0.01, 0.01)
+
+    // Add ports as points on the globe
+    const ports = [
+      { name: 'Rotterdam', lat: 51.9244, lng: 4.4777, color: '#60a5fa' },
+      { name: 'Hamburg', lat: 53.5511, lng: 9.9937, color: '#60a5fa' },
+      { name: 'Antwerp', lat: 51.2194, lng: 4.4025, color: '#60a5fa' },
+      { name: 'Marseille', lat: 43.2965, lng: 5.3698, color: '#60a5fa' },
+      { name: 'Valencia', lat: 39.4699, lng: -0.3763, color: '#60a5fa' }
+    ]
+
+    // Add material sources
+    const sources = [
+      { name: 'Chile (Lithium)', lat: -30.0, lng: -71.0, color: '#4ade80' },
+      { name: 'Australia (Lithium)', lat: -25.0, lng: 133.0, color: '#4ade80' },
+      { name: 'DRC (Cobalt)', lat: -4.0383, lng: 21.7587, color: '#60a5fa' },
+      { name: 'China (Rare Earths)', lat: 35.8617, lng: 104.1954, color: '#fb923c' }
+    ]
+
+    const allPoints = [...ports, ...sources]
+
+    globe
+      .pointsData(allPoints)
+      .pointAltitude(0.01)
+      .pointColor('color')
+      .pointRadius(0.5)
+      .pointResolution(12)
+
+    // Add arcs for trade routes
+    const arcs = [
+      { startLat: -30.0, startLng: -71.0, endLat: 51.9244, endLng: 4.4777, color: '#4ade80' },
+      { startLat: -25.0, startLng: 133.0, endLat: 51.9244, endLng: 4.4777, color: '#4ade80' },
+      { startLat: -4.0383, startLng: 21.7587, endLat: 51.9244, endLng: 4.4777, color: '#60a5fa' },
+      { startLat: 35.8617, startLng: 104.1954, endLat: 53.5511, endLng: 9.9937, color: '#fb923c' }
+    ]
+
+    globe
+      .arcsData(arcs)
+      .arcColor('color')
+      .arcDashLength(0.4)
+      .arcDashGap(0.2)
+      .arcDashAnimateTime(1500)
+      .arcStroke(0.5)
+
+    globeRef.current = globe
+    setGlobeData(globe)
+
+    return () => {
+      if (globeRef.current) {
+        scene.remove(globeRef.current)
+      }
     }
-    
-    // Europe (centered for our view)
-    drawLandmass(950, 320, 180, 120, '#3a5f3a')
-    
-    // Africa
-    drawLandmass(980, 450, 120, 200, '#4a6b4a')
-    
-    // Asia
-    drawLandmass(1120, 280, 350, 200, '#3a5f3a')
-    
-    // Middle East
-    drawLandmass(1100, 380, 80, 80, '#5a7b5a')
-    
-    // India
-    drawLandmass(1250, 480, 80, 100, '#4a6b4a')
-    
-    // North America
-    drawLandmass(200, 300, 300, 250, '#3a5f3a')
-    
-    // South America  
-    drawLandmass(300, 560, 200, 300, '#4a6b4a')
-    
-    // Australia
-    drawLandmass(1550, 550, 150, 100, '#5a7b5a')
-    
-    // Greenland
-    drawLandmass(700, 200, 100, 80, '#6a8b6a')
-    
-    // Add some islands
-    for (let i = 0; i < 20; i++) {
-      const x = Math.random() * canvas.width
-      const y = Math.random() * canvas.height
-      const size = Math.random() * 20 + 5
-      ctx.fillStyle = '#4a6b4a'
-      ctx.beginPath()
-      ctx.arc(x, y, size, 0, Math.PI * 2)
-      ctx.fill()
+  }, [scene])
+
+  useEffect(() => {
+    if (globeRef.current) {
+      scene.add(globeRef.current)
     }
-    
-    return new THREE.CanvasTexture(canvas)
-  }, [])
+  }, [globeData, scene])
 
   useFrame((state, delta) => {
     if (globeRef.current) {
@@ -86,40 +83,33 @@ function Globe({ selectedMaterial, activeDisruption, shipments }) {
     }
   })
 
-  return (
-    <group>
-      <Sphere ref={globeRef} args={[1.5, 64, 32]}>
-        <meshPhongMaterial 
-          map={earthTexture}
-          bumpScale={0.05}
-          specular={new THREE.Color('#1e3a5f')}
-          shininess={25}
-        />
-      </Sphere>
-      
-      {/* Atmosphere glow */}
-      <mesh>
-        <sphereGeometry args={[1.53, 64, 32]} />
-        <meshBasicMaterial 
-          color="#4169E1"
-          transparent
-          opacity={0.1}
-          side={THREE.BackSide}
-        />
-      </mesh>
-      
-      {/* Extra glow layer */}
-      <mesh>
-        <sphereGeometry args={[1.56, 64, 32]} />
-        <meshBasicMaterial 
-          color="#60a5fa"
-          transparent
-          opacity={0.05}
-          side={THREE.BackSide}
-        />
-      </mesh>
-    </group>
-  )
+  // Handle disruptions
+  useEffect(() => {
+    if (globeRef.current && activeDisruption) {
+      if (activeDisruption === 'suez') {
+        // Add alternative route around Africa
+        const alternativeArcs = [
+          {
+            startLat: 35.8617,
+            startLng: 104.1954,
+            endLat: 51.9244,
+            endLng: 4.4777,
+            color: '#ef4444',
+            // Add waypoints for route around Africa
+            waypoints: [
+              { lat: 1.3521, lng: 103.8198 }, // Singapore
+              { lat: -34.9285, lng: 18.4241 }, // Cape Town
+              { lat: 36.8065, lng: -5.3168 }, // Gibraltar
+            ]
+          }
+        ]
+
+        globeRef.current.arcsData([...globeRef.current.arcsData(), ...alternativeArcs])
+      }
+    }
+  }, [activeDisruption])
+
+  return null
 }
 
 export default Globe
