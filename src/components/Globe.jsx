@@ -7,7 +7,7 @@ import {
   fetchSupplyRoutes 
 } from '../services/euEnergyService.js'
 
-function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
+function GlobeComponent({ selectedMaterial, activeDisruption, shipments, timeline = 0, bottleneckMode = false }) {
   const mountRef = useRef()
   const globeRef = useRef()
   const [locations, setLocations] = useState([])
@@ -48,7 +48,8 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
         country: location.country,
         region: location.region,
         capacity: location.capacity || location.output_capacity,
-        importance: location.eu_strategic_importance || location.strategic_importance || 1
+        importance: location.eu_strategic_importance || location.strategic_importance || 1,
+        isBottleneck: isBottleneck(location) // Add bottleneck flag for filtering
       }))
 
       setLocations(transformedLocations)
@@ -62,17 +63,70 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
     }
   }
 
-  // Calculate size based on capacity and strategic importance
-  const getLocationSize = (location) => {
-    const baseSize = 0.5
-    const importanceMultiplier = (location.eu_strategic_importance || 1) * 0.2
-    const capacityMultiplier = location.capacity ? Math.min(location.capacity / 100000, 2) : 0.5
-    return baseSize + importanceMultiplier + capacityMultiplier
+  // Identify critical bottlenecks
+  const isBottleneck = (location) => {
+    const locationType = location.type || location.facility_type
+    
+    // EU ports are critical bottlenecks
+    if (locationType === 'port' && (location.is_eu_facility || location.region === 'EU')) {
+      return true
+    }
+    
+    // High-risk source dependencies (>60% EU dependency)
+    if (location.country === 'China' || location.country === 'DRC') {
+      return true
+    }
+    
+    // Major EU manufacturing with high strategic importance
+    if ((location.is_eu_facility || location.region === 'EU') && 
+        (location.eu_strategic_importance || location.strategic_importance || 0) >= 9) {
+      return true
+    }
+    
+    return false
   }
 
-  // Color based on location type and risk level
+  // Calculate size based on capacity and strategic importance - FIXED for no overlap
+  const getLocationSize = (location) => {
+    const baseSize = 0.3 // Reduced base size to prevent overlap
+    const importanceMultiplier = (location.eu_strategic_importance || 1) * 0.1 // Reduced multiplier
+    
+    // More controlled capacity scaling to prevent huge differences
+    let capacityMultiplier = 0.2
+    if (location.capacity) {
+      // Use logarithmic scaling to prevent massive size differences
+      capacityMultiplier = Math.min(Math.log(location.capacity / 1000) * 0.1, 0.6)
+    }
+    
+    // Subtle bottleneck emphasis without making them massive
+    const bottleneckMultiplier = isBottleneck(location) ? 1.2 : 1
+    
+    // Ensure size stays within reasonable bounds (0.3 to 1.2)
+    const finalSize = (baseSize + importanceMultiplier + capacityMultiplier) * bottleneckMultiplier
+    return Math.max(0.3, Math.min(finalSize, 1.2))
+  }
+
+  // Color based on location type and risk level with bottleneck highlighting
   const getLocationColor = (location) => {
     const locationType = location.type || location.facility_type
+    
+    // Override with bottleneck colors if this is a critical bottleneck
+    if (isBottleneck(location)) {
+      if (locationType === 'port') {
+        return '#ef4444' // Bright red for critical port bottlenecks
+      }
+      
+      if (location.country === 'China' || location.country === 'DRC') {
+        return '#dc2626' // Dark red for high-risk dependencies
+      }
+      
+      if ((location.is_eu_facility || location.region === 'EU') && 
+          (location.eu_strategic_importance || location.strategic_importance || 0) >= 9) {
+        return '#f97316' // Orange for critical EU facilities
+      }
+    }
+    
+    // Standard colors for non-bottleneck locations
     switch (locationType) {
       case 'battery_plant':
       case 'solar_facility':
@@ -96,11 +150,45 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
   const getRouteColor = (route) => {
     const riskColors = {
       'low': '#22c55e',      // Green
-      'medium': '#f59e0b',   // Yellow  
+      'moderate': '#f59e0b', // Yellow  
       'high': '#fb923c',     // Orange
       'very_high': '#ef4444' // Red
     }
     return riskColors[route.risk_level] || '#94a3b8'
+  }
+
+  // Calculate route thickness based on volume and criticality - FIXED for visibility
+  const getRouteThickness = (route) => {
+    const baseThickness = 0.8 // Increased base for better visibility
+    
+    // Logarithmic volume scaling to prevent extreme differences
+    let volumeMultiplier = 1
+    if (route.volume && route.volume > 0) {
+      volumeMultiplier = Math.min(Math.log(route.volume / 1000) * 0.3, 2)
+    }
+    
+    // Moderate criticality multipliers
+    const criticalityMultiplier = route.risk_level === 'very_high' ? 1.3 : 
+                                 route.risk_level === 'high' ? 1.2 : 1
+    
+    // Subtle emphasis for major routes
+    const routeName = route.name || `${route.origin?.name || ''} → ${route.destination?.name || ''}`
+    const majorRouteMultiplier = (routeName.includes('China') || routeName.includes('DRC')) ? 1.1 : 1
+    
+    // Keep thickness within reasonable bounds (0.5 to 2.5)
+    const finalThickness = baseThickness * volumeMultiplier * criticalityMultiplier * majorRouteMultiplier
+    return Math.max(0.5, Math.min(finalThickness, 2.5))
+  }
+
+  // Enhanced route animation speed based on criticality
+  const getRouteAnimationSpeed = (route) => {
+    const baseSpeed = 1500
+    
+    // High-risk routes pulse faster to show urgency
+    if (route.risk_level === 'very_high') return baseSpeed - 400
+    if (route.risk_level === 'high') return baseSpeed - 200
+    
+    return baseSpeed
   }
 
   // Fallback sample data if Supabase is not available
@@ -162,24 +250,35 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
       .width(window.innerWidth)
       .height(window.innerHeight)
 
-    // Add points to globe as flat circles/blobs
-    globe
-      .pointsData(locations)
-      .pointAltitude(0.01) // Keep points flat on surface
-      .pointColor('color')
-      .pointRadius('size') // Use size property for radius instead of altitude
-      .pointResolution(12)
-      .pointLabel(d => `
-        <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: white; font-size: 12px;">
-          <strong>${d.name}</strong><br/>
-          Type: ${d.type}<br/>
-          ${d.country ? `Country: ${d.country}<br/>` : ''}
-          ${d.capacity ? `Capacity: ${d.capacity.toLocaleString()}<br/>` : ''}
-          ${d.importance ? `Strategic Importance: ${d.importance}/5` : ''}
-        </div>
-      `)
+    // Filter locations based on bottleneck mode
+    const displayLocations = bottleneckMode ? 
+      locations.filter(location => location.isBottleneck) : 
+      locations
 
-    // Create arcs from supply routes data
+    // Add points to globe as flat circles/blobs - FIXED overlap issue
+    globe
+      .pointsData(displayLocations)
+      .pointAltitude(0.01) // Keep all points at same level to prevent z-fighting
+      .pointColor('color')
+      .pointRadius('size') // Use consistent sizing - no multipliers that cause overlap
+      .pointResolution(8) // Reduced resolution for better performance and less visual noise
+      .pointLabel(d => {
+        const isBottleneckLocation = isBottleneck(d)
+        const bottleneckWarning = isBottleneckLocation ? '<br/>⚠️ <strong style="color: #ef4444;">CRITICAL BOTTLENECK</strong>' : ''
+        
+        return `
+          <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: white; font-size: 12px; border: ${isBottleneckLocation ? '2px solid #ef4444' : '1px solid rgba(255,255,255,0.2)'};">
+            <strong>${d.name}</strong>${bottleneckWarning}<br/>
+            Type: ${d.type}<br/>
+            ${d.country ? `Country: ${d.country}<br/>` : ''}
+            ${d.capacity ? `Capacity: ${d.capacity.toLocaleString()}<br/>` : ''}
+            ${d.importance ? `Strategic Importance: ${d.importance}/5<br/>` : ''}
+            ${isBottleneckLocation ? `<span style="color: #f59e0b;">Risk Level: HIGH</span>` : ''}
+          </div>
+        `
+      })
+
+    // Create arcs from supply routes data with enhanced bottleneck visualization
     const arcs = routes.map(route => ({
       startLat: route.origin?.lat || 0,
       startLng: route.origin?.lng || 0,
@@ -188,7 +287,11 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
       color: getRouteColor(route),
       name: `${route.origin?.name || 'Unknown'} → ${route.destination?.name || 'Unknown'} (${route.material?.name || 'Material'})`,
       volume: route.volume,
-      riskLevel: route.risk_level
+      riskLevel: route.risk_level,
+      thickness: getRouteThickness(route),
+      animationSpeed: getRouteAnimationSpeed(route),
+      // Pass the full route object for thickness calculation
+      routeData: route
     }))
 
     globe
@@ -196,8 +299,8 @@ function GlobeComponent({ selectedMaterial, activeDisruption, shipments }) {
       .arcColor('color')
       .arcDashLength(0.4)
       .arcDashGap(0.2)
-      .arcDashAnimateTime(d => 1500 - (d.riskLevel === 'high' ? 300 : 0)) // Faster animation for high risk
-      .arcStroke(d => Math.min(d.volume / 10000, 2)) // Thickness based on volume
+      .arcDashAnimateTime(d => d.animationSpeed) // Use enhanced animation speed
+      .arcStroke(d => d.thickness) // Use enhanced thickness calculation
       .arcLabel(d => `
         <div style="background: rgba(0,0,0,0.8); padding: 8px; border-radius: 4px; color: white; font-size: 12px;">
           <strong>${d.name}</strong><br/>

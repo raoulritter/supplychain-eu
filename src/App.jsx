@@ -8,6 +8,8 @@ function App() {
   const [selectedMaterial, setSelectedMaterial] = useState('all')
   const [activeDisruption, setActiveDisruption] = useState(null)
   const [shipments, setShipments] = useState([])
+  const [timeline, setTimeline] = useState(0)
+  const [bottleneckMode, setBottleneckMode] = useState(false)
 
   return (
     <div className="app">
@@ -15,6 +17,8 @@ function App() {
         selectedMaterial={selectedMaterial}
         activeDisruption={activeDisruption}
         shipments={shipments}
+        timeline={timeline}
+        bottleneckMode={bottleneckMode}
       />
       
       <ControlPanel 
@@ -22,11 +26,17 @@ function App() {
         setSelectedMaterial={setSelectedMaterial}
         activeDisruption={activeDisruption}
         setActiveDisruption={setActiveDisruption}
+        timeline={timeline}
+        setTimeline={setTimeline}
+        bottleneckMode={bottleneckMode}
+        setBottleneckMode={setBottleneckMode}
       />
       
       <StatusDashboard 
         shipments={shipments}
         activeDisruption={activeDisruption}
+        bottleneckMode={bottleneckMode}
+        timeline={timeline}
       />
     </div>
   )
