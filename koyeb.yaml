@@ -4,6 +4,7 @@ services:
     type: web
     build:
       builder: buildpack
+      build_command: npm install && npm run build
     run_command: npm start
     ports:
       - port: 8000
